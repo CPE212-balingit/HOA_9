@@ -1,0 +1,85 @@
+---
+- host: all
+  become: true
+  tasks:
+
+  - name: Create Folder /srv/prometheus if not exist
+    file:
+      path: /srv/prometheus
+      mode: 0755
+      state: directory
+
+  - name: Create Folder /srv/alertmanager if not exist
+    file:
+      path: /srv/alertmanager
+      mode: 0755
+      state: directory
+
+  - name: Create prometheus configuration file
+    copy:
+      dest: /srv/prometheus/prometheus.yml
+      src: prometheus_main.yml
+      mode: 0644
+
+  - name: Create prometheus alert configuration file
+    copy:
+      dest: /srv/prometheus/prometheus_alerts_rules.yml
+      src: prometheus_alerts_rules.yml
+      mode: 0644
+
+  - name: Create Prometheus container
+    docker_container:
+      name: ptometheus
+      restart_policy: always
+      image: prom/prometheus:
+      volumes:
+        - /srv/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+        - /srv/prometheus/prometheus_alerts_rules.yml:/etc/prometheus/prometheus_alerts_rules.yml
+        - prometheus_main-data:/prometheus
+      command: >
+        --config.file=/etc/prometheus/prometheus.yml
+        --storage.tsdb.path=/prometheus
+        --web.console.libraries=/etc/prometheus/console_libraries
+        --web.enable-lifecycle
+      published_ports: "9090:9090"
+
+  - name: Create Alertmanager container
+    docker_container:
+      name: alertmanager
+      restart_policy: always
+      image: prom/alertmanager:
+      volume:
+        - alertmanager-data:/data
+        - /srv/alertmanager:/config
+      command: >
+        --config.file=/config/alertmanager.yml
+        --log.level=debug
+      published_ports: "9093:9093"
+
+  - name: Create NodeExporter
+    docker_container:
+      name: node_policy: always
+      image: prom/node-exporter:
+      volumes:
+        - /proc:/hosts/proc:ro
+        - /sys:/host/sys:ro
+        - /:/rootfs:ro
+      command: >
+        --path.procfs=/host/proc
+        --path.rootfs=/rootfs
+        --path.susfs=/host/sys
+        --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+      published_ports: "9100:9100"
+
+  - name: Create cAdvisor
+    docker_container:
+    restart_policy: always
+    image: gcr.io/cadvisor/cadvisor:
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    published_ports: "9101:8080"
+
